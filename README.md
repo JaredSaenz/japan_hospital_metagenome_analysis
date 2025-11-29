@@ -1,1 +1,1 @@
-# japan_hospital_metagenome_analysis
+Todos los detalles se encuentran en el archivo terminal_inputs.txt
