@@ -1,0 +1,70 @@
+Estructura:
+DRR199648_analysis (root)/
+├── CARD+RGI_db/
+├── DRR199648/
+├── DRR199648_1.fastq
+├── DRR199648_2.fastq
+├── DRR199648_bowtie2
+├── DRR199648_fastqc/                
+│   ├── DRR199648_1_fastqc.html
+│   ├── DRR199648_2_fastqc.html
+├── DRR199648_prodigal/               
+├── DRR199648_diamond/               
+├── DRR199648_RGI/          
+└── megahit_assembly/
+	└── final.contigs.fa
+
+## SRA-Tools:
+	prefetch DRR199648
+	srapath DRR199648
+	fastq-dump -v --split-3 DRR199648/DRR199648.sra
+## Fastqc:
+	fastqc -o DRR199648_fastqc *.fastq
+## Megahit:
+	megahit --memory 0.5 -t 6 --presets meta-large -1 DRR199648_1.fastq -2 DRR199648_2.fastq -o megahit_assembly
+## Prodigal + Diamond + CARD + RGI:
+	1) Armado de base de datos de proteínas:
+	## Para volver a usar el RGI (usar los comando con #** al final)
+		mkdir CARD+RGI_db
+		cd CARD+RGI_db #**
+		wget https://card.mcmaster.ca/latest/data
+		tar -xvf data ./card.json
+		
+		rgi load --card_json card.json --local #**
+		rgi card_annotation -i card.json > card_annotation.log 2>&1
+		rgi load -i card.json --card_annotation card_database_v4.0.1.fasta --local #**
+		
+		wget -O wildcard_data.tar.bz2 https://card.mcmaster.ca/latest/variants
+		mkdir -p wildcard
+		tar -xjf wildcard_data.tar.bz2 -C wildcard
+		gunzip wildcard/*.gz
+		
+		
+		rgi wildcard_annotation -i wildcard --card_json card.json -v 4.0.1 > wildcard_annotation.log 2>&1
+		rgi load --wildcard_annotation wildcard_database_v4.0.1.fasta --card_json /path/to/card.json --wildcard_index wildcard/index-for-model-sequences.txt --card_annotation card_database_v4.0.1.fasta --local #**
+		
+		cp wildcard/protein_fasta_protein_homolog_model_variants.fasta ../DRR199648_diamond/
+		cp wildcard/protein_fasta_protein_overexpression_model_variants.fasta ../DRR199648_diamond/
+		cp wildcard/protein_fasta_protein_variant_model_variants.fasta ../DRR199648_diamond/
+		cat *.fasta > CARD_all_proteins.fasta
+		
+		diamond makedb --in CARD_all_proteins.fasta -d card_db_proteins
+	
+	2) Generación de las secuencias de proteínas y análisis con diamond
+		# Cambiar al directorio DRR199648_analysis (raíz)
+		prodigal -i megahit_assembly/final.contigs.fa -a DRR199648_prodigal/wwjapan_proteins.faa -p meta
+		diamond blastp -d DRR199648_diamond/card_db_proteins.dmnd -q DRR199648_prodigal/wwjapan_proteins.faa -o DRR199648_diamond/card_proteins_dmnd.out.tsv -f 6 qseqid sseqid stitle pident length mismatch gapopen qstart qend sstart send evalue bitscore -k 1
+	
+	3) El análsis con RGI se realizó de acuerdo a lo indicado en su repositorio en GitHub, para el análisis de los genes de resistencia:
+	# Cambiar al directorio DRR199648_analysis (raíz)
+	rgi bwt --read_one DRR199648_1.fastq --read_two DRR199648_2.fastq --output_file output_prefix --local --include_other_models -n 6 -a bowtie2 --include_wildcard
+	rgi main -i megahit_assembly/final.contigs.fa -n 6 -o DRR199648_RGI/out_rgi_blast --local
+	rgi heatmap -i DRR199648_RGI -o DRR199648_RGI_Blast/heatmap_rgi_drugClass -cat drug_class
+ 	rgi heatmap -i DRR199648_RGI -o DRR199648_RGI_Blast/heatmap_rgi_resMech -cat resistance_mechanism
+ 	rgi heatmap -i DRR199648_RGI -o DRR199648_RGI_Blast/heatmap_rgi_geneFam -cat gene_family
+
+## FOCUS:
+	cp megahit_assembly/final.contigs.fa megahit_assembly/final.contigs.fasta
+	focus -q megahit_assembly/final.contigs.fasta -o DRR199648_focusTax/
+	python3 taxon_analysis.py
+	python3 most_abdnt_genes.py 
